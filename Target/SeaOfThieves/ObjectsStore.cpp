@@ -10,10 +10,11 @@
 class FUObjectItem
 {
 public:
-	UObject* Object; //0x0000
-	__int32 Flags; //0x0008
-	__int32 ClusterIndex; //0x000C
-	//__int32 SerialNumber; //0x0010
+	UObject* Object; // 0x0000-0x0008
+	__int32 Flags; // 0x0008-0x000C
+	__int32 ClusterIndex; // 0x000C-0x0010
+	__int32 SerialNumber; // 0x0010-0x0014
+	unsigned char pad__0004[0x0004]; // 0x0014-0x0018
 };
 
 class TUObjectArray
@@ -39,16 +40,7 @@ FUObjectArray* GlobalObjects = nullptr;
 
 bool ObjectsStore::Initialize()
 {	
-	// 89 1D ? ? ? ? 48 8B DF 48 C1 E3 04 33 D2 
-	const auto address = FindPattern(GetModuleHandleW(nullptr), reinterpret_cast<const unsigned char*>(
-		"\x89\x1D\x00\x00\x00\x00\x48\x8B\xDF\x48\xC1\xE3\x04\x33\xD2"), "xx????xxxxxxxxx");
-	if (address == -1)
-	{
-		return false;
-	}
-	const auto offset = *reinterpret_cast<uint32_t*>(address + 2);
-	GlobalObjects = reinterpret_cast<decltype(GlobalObjects)>(address + 6 + offset);
-	
+	GlobalObjects = reinterpret_cast<decltype(GlobalObjects)>(reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr)) + 0x6B061B8);
 	return true;
 }
 
