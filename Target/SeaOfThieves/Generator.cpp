@@ -197,7 +197,7 @@ public:
 	std::string GetOutputDirectory() const override
 	{
 		// ToDo Change it to your path!
-		return "C:/Users/igrom/AppData/Local/Packages/Microsoft.SeaofThieves_8wekyb3d8bbwe/TempState";
+		return "C:/SDK-GEN";
 	}
 
 	std::string GetGameName() const override
@@ -217,7 +217,7 @@ public:
 
 	std::string GetNamespaceName() const override
 	{
-		return "SDK";
+		return "sdk";
 	}
 
 	std::vector<std::string> GetIncludes() const override
