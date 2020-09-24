@@ -72,16 +72,7 @@ TNameEntryArray* GlobalNames = nullptr;
 
 bool NamesStore::Initialize()
 {
-	// 48 8B 3D ? ? ? ? 48 85 FF 75 ? B9 ? ? ? ? E8 ? ? ? ? 48 8B F8 48 89 44
-	const auto address = FindPattern(GetModuleHandleW(nullptr), reinterpret_cast<const unsigned char*>(
-		"\x48\x8B\x3D\x00\x00\x00\x00\x48\x85\xFF\x75\x00\xB9\x00\x00\x00\x00\xE8\x00\x00\x00\x00\x48\x8B\xF8\x48\x89\x44"), "xxx????xxxx?x????x????xxxxxx");
-	if (address == -1)
-	{
-		return false;
-	}
-	const auto offset = *reinterpret_cast<uint32_t*>(address + 3);
-	GlobalNames = reinterpret_cast<decltype(GlobalNames)>(*reinterpret_cast<uintptr_t*>(address + 7 + offset));
-
+	GlobalNames = *(reinterpret_cast<TNameEntryArray**>(reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr)) + 0x6B01B00));
 	return true;
 }
 
