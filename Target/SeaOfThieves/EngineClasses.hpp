@@ -284,7 +284,7 @@ public:
 class UClass : public UStruct
 {
 public:
-	char pad_0x0088[0x198]; //0x0088
+	char pad_0x0088[0x138]; //0x0088
 };
 
 class UProperty : public UField
