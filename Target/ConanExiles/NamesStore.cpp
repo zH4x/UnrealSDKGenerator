@@ -5,12 +5,10 @@
 
 #include "EngineClasses.hpp"
 
-// This class contains the class which allows the generator access to global names list.
-
 class FNameEntry
 {
 public:
-	int32_t Index;
+	__int32 Index;
 	char pad_0x0004[0x4];
 	FNameEntry* HashNext;
 	union
@@ -36,26 +34,23 @@ public:
 
 	bool IsValidIndex(int32_t index) const
 	{
-		return GetById(index) != nullptr;
+		return index >= 0 && index < Num() && GetById(index) != nullptr;
 	}
 
-	ElementType* GetById(int32_t index) const
+	ElementType const* const& GetById(int32_t index) const
 	{
-		if (index < 0 || index >= Num()) return nullptr;
-
-		int32_t ChunkIndex = index / ElementsPerChunk;
-		int32_t WithinChunkIndex = index % ElementsPerChunk;
-
-		if (ChunkIndex < 0 || ChunkIndex >= NumChunks) return nullptr;
-
-		ElementType** Chunk = Chunks[ChunkIndex];
-
-		if (!Chunk) return nullptr;
-
-		return Chunk[WithinChunkIndex];
+		return *GetItemPtr(index);
 	}
 
 private:
+	ElementType const* const* GetItemPtr(int32_t Index) const
+	{
+		int32_t ChunkIndex = Index / ElementsPerChunk;
+		int32_t WithinChunkIndex = Index % ElementsPerChunk;
+		ElementType** Chunk = Chunks[ChunkIndex];
+		return Chunk + WithinChunkIndex;
+	}
+
 	enum
 	{
 		ChunkTableSize = (MaxTotalElements + ElementsPerChunk - 1) / ElementsPerChunk
@@ -72,7 +67,7 @@ TNameEntryArray* GlobalNames = nullptr;
 
 bool NamesStore::Initialize()
 {
-	GlobalNames = *(reinterpret_cast<TNameEntryArray**>(reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr)) + 0x6B01B00));
+	GlobalNames = *(reinterpret_cast<TNameEntryArray**>(reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr)) + 0x5435030));
 	return true;
 }
 
@@ -93,9 +88,5 @@ bool NamesStore::IsValid(size_t id) const
 
 std::string NamesStore::GetById(size_t id) const
 {
-	auto name = GlobalNames->GetById(static_cast<int32_t>(id));
-
-	if (name) return name->GetName();
-
-	return "__UNKNOWN_NAME__";
+	return GlobalNames->GetById(static_cast<int32_t>(id))->GetName();
 }

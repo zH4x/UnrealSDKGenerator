@@ -2,10 +2,17 @@
 
 #include <set>
 #include <string>
-#include <Windows.h>
+#include <windows.h>
 
-// This file contains the needed classes as they are present in the game memory.
-// To get these classes use a helper application like ReClass.NET (https://github.com/KN4CK3R/ReClass.NET)
+typedef unsigned char 		uint8;		// 8-bit  unsigned.
+typedef unsigned short int	uint16;		// 16-bit unsigned.
+typedef unsigned int		uint32;		// 32-bit unsigned.
+typedef unsigned long long	uint64;		// 64-bit unsigned.
+
+typedef	signed char			int8;		// 8-bit  signed.
+typedef signed short int	int16;		// 16-bit signed.
+typedef signed int	 		int32;		// 32-bit signed.
+typedef signed long long	int64;		// 64-bit signed.
 
 struct FPointer
 {
@@ -25,9 +32,9 @@ struct FName
 };
 
 template<class T>
-class TArray
+struct TArray
 {
-	friend class FString;
+	friend struct FString;
 
 public:
 	TArray()
@@ -70,12 +77,11 @@ public:
 	ValueType Value;
 };
 
-class FString : public TArray<wchar_t>
+struct FString : public TArray<wchar_t>
 {
-public:
 	std::string ToString() const
 	{
-		const int size = WideCharToMultiByte(CP_UTF8, 0, Data, Count, nullptr, 0, nullptr, nullptr);
+		int size = WideCharToMultiByte(CP_UTF8, 0, Data, Count, nullptr, 0, nullptr, nullptr);
 		std::string str(size, 0);
 		WideCharToMultiByte(CP_UTF8, 0, Data, Count, &str[0], size, nullptr, nullptr);
 		return str;
@@ -85,8 +91,8 @@ public:
 class FScriptInterface
 {
 private:
-	UObject * ObjectPointer;
-	void * InterfacePointer;
+	UObject* ObjectPointer;
+	void* InterfacePointer;
 
 public:
 	UObject* GetObject() const
@@ -111,12 +117,12 @@ class TScriptInterface : public FScriptInterface
 public:
 	InterfaceType* operator->() const
 	{
-		return static_cast<InterfaceType*>(GetInterface());
+		return (InterfaceType*)GetInterface();
 	}
 
 	InterfaceType& operator*() const
 	{
-		return *static_cast<InterfaceType*>(GetInterface());
+		return *((InterfaceType*)GetInterface());
 	}
 
 	operator bool() const
@@ -125,34 +131,148 @@ public:
 	}
 };
 
-struct FScriptSparseArrayLayout
+class FSetElementId
 {
-	int32_t ElementOffset;
-	int32_t Alignment;
-	int32_t Size;
+public:
+	int32_t Index;
 };
 
-struct FScriptSetLayout
+template <typename InElementType>
+class TSetElement
 {
-	int32_t ElementOffset;
-	int32_t HashNextIdOffset;
-	int32_t HashIndexOffset;
-	int32_t Size;
+public:
+	typedef InElementType ElementType;
 
-	FScriptSparseArrayLayout SparseArrayLayout;
+	ElementType Value;
+
+	FSetElementId HashNextId;
+
+	int32_t HashIndex;
 };
 
-struct FScriptMapLayout
+class FHeapAllocator
 {
-	int32_t KeyOffset;
-	int32_t ValueOffset;
+public:
+	class ForAnyElementType
+	{
+	public:
+		void* Data;
+	};
 
-	FScriptSetLayout SetLayout;
+	template<typename ElementType>
+	class ForElementType : public ForAnyElementType
+	{
+	};
+};
+
+template<int32_t Size>
+struct TAlignedBytes
+{
+	uint8_t Pad[Size];
+};
+
+template<typename ElementType>
+struct TTypeCompatibleBytes : TAlignedBytes<sizeof(ElementType)>
+{
+};
+
+template <uint32_t NumInlineElements, typename SecondaryAllocator = FHeapAllocator>
+class TInlineAllocator
+{
+public:
+	template<typename ElementType>
+	class ForElementType
+	{
+	public:
+		TTypeCompatibleBytes<ElementType> InlineData[NumInlineElements];
+
+		typename SecondaryAllocator::template ForElementType<ElementType> SecondaryData;
+	};
+
+	typedef void ForAnyElementType;
+};
+
+template<typename Allocator = TInlineAllocator<4>>
+class TBitArray
+{
+public:
+	typedef typename Allocator::template ForElementType<uint32_t> AllocatorType;
+
+	AllocatorType AllocatorInstance;
+	int32_t NumBits;
+	int32_t MaxBits;
+};
+
+template<typename ElementType>
+union TSparseArrayElementOrFreeListLink
+{
+	ElementType ElementData;
+
+	struct
+	{
+		int32_t PrevFreeIndex;
+		int32_t NextFreeIndex;
+	};
+};
+
+template<typename ElementType, typename Allocator>
+class TSparseArray
+{
+public:
+	typedef TSparseArrayElementOrFreeListLink<TAlignedBytes<sizeof(ElementType)>> FElementOrFreeListLink;
+
+	typedef TArray<FElementOrFreeListLink> DataType;
+	DataType Data;
+
+	typedef TBitArray<typename Allocator::BitArrayAllocator> AllocationBitArrayType;
+	AllocationBitArrayType AllocationFlags;
+
+	int32_t FirstFreeIndex;
+
+	int32_t NumFreeIndices;
+};
+
+template<typename InElementAllocator = FHeapAllocator, typename InBitArrayAllocator = TInlineAllocator<4>>
+class TSparseArrayAllocator
+{
+public:
+	typedef InElementAllocator ElementAllocator;
+	typedef InBitArrayAllocator BitArrayAllocator;
+};
+
+template<typename InSparseArrayAllocator = TSparseArrayAllocator<>, typename InHashAllocator = TInlineAllocator<1, FHeapAllocator>>
+class TSetAllocator
+{
+public:
+	typedef InSparseArrayAllocator SparseArrayAllocator;
+	typedef InHashAllocator HashAllocator;
+};
+
+template<typename InElementType, typename Allocator = TSetAllocator<>>
+class TSet
+{
+public:
+	typedef TSetElement<InElementType> SetElementType;
+	typedef TSparseArray<SetElementType, typename Allocator::SparseArrayAllocator> ElementArrayType;
+	typedef typename Allocator::HashAllocator::template ForElementType<FSetElementId> HashType;
+
+	ElementArrayType Elements;
+
+	HashType Hash;
+	int32_t HashSize;
+};
+
+struct FTextData
+{
+	char pad_0000[40]; //0x0000
+	wchar_t* Data; //0x0028
+	int32_t Length; //0x0030
 };
 
 struct FText
 {
-	char UnknownData[0x18];
+	FTextData* Data;
+	char pad_0000[16];
 };
 
 struct FWeakObjectPtr
@@ -243,8 +363,7 @@ class UEnum : public UField
 public:
 	FString CppType; //0x0030 
 	TArray<TPair<FName, uint64_t>> Names; //0x0040 
-	__int64 CppForm; //0x0050
-	char pad_0x0058[0x8]; //0x0058
+	__int64 CppForm; //0x0050 
 };
 
 class UStruct : public UField
@@ -260,43 +379,67 @@ public:
 class UScriptStruct : public UStruct
 {
 public:
-	char pad_0x0088[0x10]; //0x0088
+	int32 Size;
+	int32 Alignment;
 };
 
 class UFunction : public UStruct
 {
 public:
-	__int32 FunctionFlags; //0x0088
-	__int16 RepOffset; //0x008C
-	__int8 NumParms; //0x008E
-	char pad_0x008F[0x1]; //0x008F
-	__int16 ParmsSize; //0x0090
-	__int16 ReturnValueOffset; //0x0092
-	__int16 RPCId; //0x0094
-	__int16 RPCResponseId; //0x0096
-	class UProperty* FirstPropertyToInit; //0x0098
-	UFunction* EventGraphFunction; //0x00A0
-	__int32 EventGraphCallOffset; //0x00A8
-	char pad_0x00AC[0x4]; //0x00AC
-	void* Func; //0x00B0
+
+	int32_t FunctionFlags;
+	int16_t RepOffset;
+	int8_t NumParms;
+	int16_t ParmsSize;
+	int16_t ReturnValueOffset;
+	int16_t RPCId;
+	int16_t RPCResponseId;
+	class UProperty* FirstPropertyToInit;
+	UFunction* EventGraphFunction;
+	int32_t EventGraphCallOffset;
+	void* Func;
 };
 
 class UClass : public UStruct
 {
 public:
-	char pad_0x0088[0x138]; //0x0088
+	unsigned char UnknownData00[0x1C8];
 };
 
 class UProperty : public UField
 {
 public:
-	__int32 ArrayDim; //0x0030 
-	__int32 ElementSize; //0x0034 
-	FQWord PropertyFlags; //0x0038
-	__int32 PropertySize; //0x0040 
-	char pad_0x0044[0x8]; //0x0044
-	__int32 Offset; //0x004C
-	char pad_0x0050[0x20]; //0x0050
+	enum ELifetimeCondition
+	{
+		COND_None = 0,
+		COND_InitialOnly = 1,
+		COND_OwnerOnly = 2,
+		COND_SkipOwner = 3,
+		COND_SimulatedOnly = 4,
+		COND_AutonomousOnly = 5,
+		COND_SimulatedOrPhysics = 6,
+		COND_InitialOrOwner = 7,
+		COND_Custom = 8,
+		COND_ReplayOrOwner = 9,
+		COND_ReplayOnly = 10,
+		COND_SimulatedOnlyNoReplay = 11,
+		COND_SimulatedOrPhysicsNoReplay = 12,
+		COND_SkipReplay = 13,
+		COND_Max = 14
+	};
+
+	int32 ArrayDim;
+	int32 ElementSize;
+	FQWord PropertyFlags;
+	uint16 RepIndex;
+	unsigned char Pad[0x6];
+	FName RepNotifyFunc;
+	int32 Offset;
+	ELifetimeCondition BlueprintReplicationCondition;
+	class UProperty* PropertyLinkNext;
+	class UProperty* NextRef;
+	class UProperty* DestructorLinkNext;
+	class UProperty* PostConstructLinkNext;
 };
 
 class UNumericProperty : public UProperty
@@ -308,7 +451,7 @@ public:
 class UByteProperty : public UNumericProperty
 {
 public:
-	UEnum* Enum;
+	UEnum*		Enum;										// 0x0088 (0x04)
 };
 
 class UUInt16Property : public UNumericProperty
@@ -372,7 +515,6 @@ public:
 	uint8_t ByteOffset;
 	uint8_t ByteMask;
 	uint8_t FieldMask;
-	char pad_0x0074[0x4];
 };
 
 class UObjectPropertyBase : public UProperty
@@ -458,8 +600,6 @@ class UMapProperty : public UProperty
 public:
 	UProperty* KeyProp;
 	UProperty* ValueProp;
-	FScriptMapLayout ScriptMapLayout;
-	char pad_0x00A4[0x4];
 };
 
 class UDelegateProperty : public UProperty

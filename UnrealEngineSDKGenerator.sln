@@ -37,6 +37,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SeaOfThieves", "SeaOfThieve
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TheCullingOrigins", "TheCullingOrigins.vcxproj", "{3361F975-6F23-4BF8-BCB0-06BAB65D496C}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ConanExiles", "ConanExiles.vcxproj", "{FF7B66F5-6E86-47CF-8BBF-2D956EE520E3}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64

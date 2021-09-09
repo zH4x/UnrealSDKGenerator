@@ -2,8 +2,6 @@
 #include "ObjectsStore.hpp"
 #include "NamesStore.hpp"
 
-// This file contains the specific implementation for a game. For more informations can be found in the readme.
-
 class Generator : public IGenerator
 {
 public:
@@ -19,7 +17,7 @@ public:
 		};
 
 		virtualFunctionPattern["Class CoreUObject.Object"] = {
-			{ "\x0F\x00\x00\x00\x00\x00\x00\xB9\xFF\xFF\x00\x00\x66\x3B\xC1\x74", "x????xxxxxxxxxxx", 0x400, R"(	inline void ProcessEvent(class UFunction* function, void* parms)
+			{ "\x45\x33\xF6\x4D\x8B\xE0", "xxxxxx", 0x200, R"(	inline void ProcessEvent(class UFunction* function, void* parms)
 	{
 		return GetVFunction<void(*)(UObject*, class UFunction*, void*)>(this, %d)(this, function, parms);
 	})" }
@@ -194,25 +192,19 @@ public:
 		return true;
 	}
 
-	std::string GetOutputDirectory() const override
-	{
-		// ToDo Change it to your path!
-		return "C:/SDK-GEN";
-	}
-
 	std::string GetGameName() const override
 	{
-		return "Sea of Thieves";
+		return "Conan Exiles";
 	}
 
 	std::string GetGameNameShort() const override
 	{
-		return "SoT";
+		return "CE";
 	}
 
 	std::string GetGameVersion() const override
 	{
-		return "1.2.6";
+		return "29.09.2020";
 	}
 
 	std::string GetNamespaceName() const override
@@ -244,7 +236,7 @@ public:
 	int32_t ClusterIndex;
 	int32_t SerialNumber;
 
-	enum class EInternalObjectFlags : int32_t
+	enum class ObjectFlags : int32_t
 	{
 		None = 0,
 		Native = 1 << 25,
@@ -258,12 +250,11 @@ public:
 
 	inline bool IsUnreachable() const
 	{
-		return !!(Flags & static_cast<std::underlying_type_t<EInternalObjectFlags>>(EInternalObjectFlags::Unreachable));
+		return !!(Flags & static_cast<std::underlying_type_t<ObjectFlags>>(ObjectFlags::Unreachable));
 	}
-
 	inline bool IsPendingKill() const
 	{
-		return !!(Flags & static_cast<std::underlying_type_t<EInternalObjectFlags>>(EInternalObjectFlags::PendingKill));
+		return !!(Flags & static_cast<std::underlying_type_t<ObjectFlags>>(ObjectFlags::PendingKill));
 	}
 };
 
@@ -298,17 +289,14 @@ private:
 class FUObjectArray
 {
 public:
-	int32_t ObjFirstGCIndex;
-	int32_t ObjLastNonGCIndex;
-	int32_t MaxObjectsNotConsideredByGC;
-	int32_t OpenForDisregardForGC;
 	TUObjectArray ObjObjects;
 };
 
+
 template<class T>
-class TArray
+struct TArray
 {
-	friend class FString;
+	friend struct FString;
 
 public:
 	inline TArray()
@@ -379,10 +367,17 @@ public:
 	}
 };
 
-template<typename ElementType, int32_t MaxTotalElements, int32_t ElementsPerChunk>
+template<typename ElementType, int32_t _MaxTotalElements, int32_t _ElementsPerChunk>
 class TStaticIndirectArrayThreadSafeRead
 {
 public:
+	enum
+	{
+		MaxTotalElements = _MaxTotalElements,
+		ElementsPerChunk = _ElementsPerChunk,
+		ChunkTableSize = (_MaxTotalElements + _ElementsPerChunk - 1) / _ElementsPerChunk
+	};
+
 	inline size_t Num() const
 	{
 		return NumElements;
@@ -401,16 +396,11 @@ public:
 private:
 	inline ElementType const* const* GetItemPtr(int32_t Index) const
 	{
-		const auto ChunkIndex = Index / ElementsPerChunk;
-		const auto WithinChunkIndex = Index % ElementsPerChunk;
-		const auto Chunk = Chunks[ChunkIndex];
+		int32_t ChunkIndex = Index / _MaxTotalElements;
+		int32_t WithinChunkIndex = Index % _ElementsPerChunk;
+		ElementType** Chunk = Chunks[ChunkIndex];
 		return Chunk + WithinChunkIndex;
 	}
-
-	enum
-	{
-		ChunkTableSize = (MaxTotalElements + ElementsPerChunk - 1) / ElementsPerChunk
-	};
 
 	ElementType** Chunks[ChunkTableSize];
 	int32_t NumElements;
@@ -493,16 +483,15 @@ struct FName
 	};
 };
 
-class FString : public TArray<wchar_t>
+struct FString : private TArray<wchar_t>
 {
-public:
 	inline FString()
 	{
 	};
 
 	FString(const wchar_t* other)
 	{
-		Max = Count = *other ? static_cast<int32_t>(std::wcslen(other)) + 1 : 0;
+		Max = Count = *other ? std::wcslen(other) + 1 : 0;
 
 		if (Count)
 		{
@@ -522,7 +511,7 @@ public:
 
 	std::string ToString() const
 	{
-		const auto length = std::wcslen(Data);
+		auto length = std::wcslen(Data);
 
 		std::string str(length, '\0');
 
@@ -612,9 +601,149 @@ public:
 	}
 };
 
+class FSetElementId
+{
+public:
+	int32_t Index;
+};
+
+template <typename InElementType>
+class TSetElement
+{
+public:
+	typedef InElementType ElementType;
+
+	ElementType Value;
+
+	FSetElementId HashNextId;
+
+	int32_t HashIndex;
+};
+
+class FHeapAllocator
+{
+public:
+	class ForAnyElementType
+	{
+	public:
+		void* Data;
+	};
+
+	template<typename ElementType>
+	class ForElementType : public ForAnyElementType
+	{
+	};
+};
+
+template<int32_t Size>
+struct TAlignedBytes
+{
+	uint8_t Pad[Size];
+};
+
+template<typename ElementType>
+struct TTypeCompatibleBytes : TAlignedBytes<sizeof(ElementType)>
+{
+};
+
+template <uint32_t NumInlineElements, typename SecondaryAllocator = FHeapAllocator>
+class TInlineAllocator
+{
+public:
+	template<typename ElementType>
+	class ForElementType
+	{
+	public:
+		TTypeCompatibleBytes<ElementType> InlineData[NumInlineElements];
+
+		typename SecondaryAllocator::template ForElementType<ElementType> SecondaryData;
+	};
+
+	typedef void ForAnyElementType;
+};
+
+template<typename Allocator = TInlineAllocator<4>>
+class TBitArray
+{
+public:
+	typedef typename Allocator::template ForElementType<uint32_t> AllocatorType;
+
+	AllocatorType AllocatorInstance;
+	int32_t NumBits;
+	int32_t MaxBits;
+};
+
+template<typename ElementType>
+union TSparseArrayElementOrFreeListLink
+{
+	ElementType ElementData;
+
+	struct
+	{
+		int32_t PrevFreeIndex;
+		int32_t NextFreeIndex;
+	};
+};
+
+template<typename ElementType, typename Allocator>
+class TSparseArray
+{
+public:
+	typedef TSparseArrayElementOrFreeListLink<TAlignedBytes<sizeof(ElementType)>> FElementOrFreeListLink;
+
+	typedef TArray<FElementOrFreeListLink> DataType;
+	DataType Data;
+
+	typedef TBitArray<typename Allocator::BitArrayAllocator> AllocationBitArrayType;
+	AllocationBitArrayType AllocationFlags;
+
+	int32_t FirstFreeIndex;
+
+	int32_t NumFreeIndices;
+};
+
+template<typename InElementAllocator = FHeapAllocator, typename InBitArrayAllocator = TInlineAllocator<4>>
+class TSparseArrayAllocator
+{
+public:
+	typedef InElementAllocator ElementAllocator;
+	typedef InBitArrayAllocator BitArrayAllocator;
+};
+
+template<typename InSparseArrayAllocator = TSparseArrayAllocator<>, typename InHashAllocator = TInlineAllocator<1, FHeapAllocator>>
+class TSetAllocator
+{
+public:
+	typedef InSparseArrayAllocator SparseArrayAllocator;
+	typedef InHashAllocator HashAllocator;
+};
+
+template<typename InElementType, typename Allocator = TSetAllocator<>>
+class TSet
+{
+public:
+	typedef TSetElement<InElementType> SetElementType;
+	typedef TSparseArray<SetElementType, typename Allocator::SparseArrayAllocator> ElementArrayType;
+	typedef typename Allocator::HashAllocator::template ForElementType<FSetElementId> HashType;
+
+	ElementArrayType Elements;
+
+	HashType Hash;
+	int32_t HashSize;
+};
+
+struct FTextData
+{
+	char pad_0000[40]; //0x0000
+	wchar_t* Data; //0x0028
+	int32_t Length; //0x0030
+};
+
 struct FText
 {
-	char UnknownData[0x18];
+	FTextData* Data;
+	char UnknownData[8];
+	int32_t Flags;
 };
 
 struct FScriptDelegate
@@ -721,23 +850,6 @@ class FAssetPtr : public TPersistentObjectPtr<FStringAssetReference_>
 
 template<typename ObjectType>
 class TAssetPtr : FAssetPtr
-{
-
-};
-
-struct FSoftObjectPath
-{
-	FName AssetPathName;
-	FString SubPathString;
-};
-
-class FSoftObjectPtr : public TPersistentObjectPtr<FSoftObjectPath>
-{
-
-};
-
-template<typename ObjectType>
-class TSoftObjectPtr : FSoftObjectPtr
 {
 
 };
